@@ -14,8 +14,10 @@ use futures::{
 };
 use futures_util::future::BoxFuture;
 use std::sync::Arc;
-use tokio_retry::strategy::{jitter, ExponentialBackoff};
-use tokio_retry::Retry;
+use tokio_retry2::{
+    strategy::{jitter, ExponentialBackoff},
+    MapErr, Retry,
+};
 
 /// ConnectionManager is the configuration for reconnect mechanism and request timing
 #[derive(Clone, Debug)]
@@ -318,8 +320,11 @@ impl ConnectionManager {
     ) -> RedisResult<MultiplexedConnection> {
         let retry_strategy = exponential_backoff.map(jitter).take(number_of_retries);
         let connection_config = connection_config.clone();
-        Retry::spawn(retry_strategy, || {
-            client.get_multiplexed_async_connection_with_config(&connection_config)
+        Retry::spawn(retry_strategy, || async {
+            client
+                .get_multiplexed_async_connection_with_config(&connection_config)
+                .await
+                .map_transient_err()
         })
         .await
     }
